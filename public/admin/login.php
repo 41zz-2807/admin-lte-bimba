@@ -86,6 +86,11 @@ $app = require __DIR__ . '/../../config/app.php';
                     </button>
                 </div>
             </form>
+            <div class="text-center mt-3">
+                <a href="/" class="text-decoration-none">
+                    <i class="bi bi-arrow-left me-1"></i> Kembali ke Beranda
+                </a>
+            </div>
         </div>
         <div class="card-footer text-center text-muted small py-3">
             &copy; <?= date('Y') ?> <?= e($app['name']) ?>

@@ -120,7 +120,12 @@ $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
             <p>Transaksi</p>
         </a>
     </li>
-
+    <li class="nav-item">
+        <a href="/admin/landing/" class="nav-link <?= str_contains($currentPath, '/admin/landing') ? 'active' : '' ?>">
+            <i class="nav-icon bi bi-window"></i>
+            <p>Landing Page</p>
+        </a>
+    </li>
     <li class="nav-item">
         <a href="#" class="nav-link">
             <i class="nav-icon bi bi-calendar3"></i>
@@ -150,6 +155,12 @@ $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
         </a>
     </li>
     <?php endif; ?>
+        <li class="nav-item">
+        <a href="/admin/settings.php" class="nav-link <?= str_contains($currentPath, '/admin/settings') ? 'active' : '' ?>">
+            <i class="nav-icon bi bi-gear"></i>
+            <p>Pengaturan</p>
+        </a>
+    </li>
 </ul>
                 </ul>
             </nav>
