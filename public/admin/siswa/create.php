@@ -9,7 +9,7 @@ $error = '';
 $old = [
     'nis' => '', 'nama' => '', 'jenis_kelamin' => 'L',
     'tanggal_lahir' => '', 'nama_ortu' => '', 'no_hp_ortu' => '',
-    'alamat' => '', 'status' => 'aktif', 'catatan' => '',
+    'email_ortu' => '', 'alamat' => '', 'status' => 'aktif', 'catatan' => '',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -20,6 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'tanggal_lahir' => $_POST['tanggal_lahir'] ?? '',
         'nama_ortu'     => trim($_POST['nama_ortu'] ?? ''),
         'no_hp_ortu'    => trim($_POST['no_hp_ortu'] ?? ''),
+        'email_ortu'    => trim($_POST['email_ortu'] ?? ''),
         'alamat'        => trim($_POST['alamat'] ?? ''),
         'status'        => $_POST['status'] ?? 'aktif',
         'catatan'       => trim($_POST['catatan'] ?? ''),
@@ -31,6 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Jenis kelamin tidak valid.';
     } elseif (!in_array($old['status'], ['aktif', 'nonaktif', 'lulus'], true)) {
         $error = 'Status tidak valid.';
+    } elseif ($old['email_ortu'] !== '' && !filter_var($old['email_ortu'], FILTER_VALIDATE_EMAIL)) {
+        $error = 'Format email orang tua tidak valid.';
     } else {
         global $pdo;
 
@@ -44,8 +47,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($error === '') {
             $ins = $pdo->prepare('INSERT INTO siswa
-                (nis, nama, jenis_kelamin, tanggal_lahir, nama_ortu, no_hp_ortu, alamat, status, catatan)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                (nis, nama, jenis_kelamin, tanggal_lahir, nama_ortu, no_hp_ortu, email_ortu, alamat, status, catatan)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             $ins->execute([
                 $old['nis'] ?: null,
                 $old['nama'],
@@ -53,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $old['tanggal_lahir'] ?: null,
                 $old['nama_ortu'] ?: null,
                 $old['no_hp_ortu'] ?: null,
+                $old['email_ortu'] ?: null,
                 $old['alamat'] ?: null,
                 $old['status'],
                 $old['catatan'] ?: null,
@@ -116,6 +120,11 @@ ob_start();
                             <label class="form-label">No. HP Orang Tua</label>
                             <input type="text" name="no_hp_ortu" class="form-control" value="<?= e($old['no_hp_ortu']) ?>">
                         </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email Orang Tua</label>
+                        <input type="email" name="email_ortu" class="form-control" placeholder="contoh@email.com"
+                               value="<?= e($old['email_ortu']) ?>">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Alamat</label>

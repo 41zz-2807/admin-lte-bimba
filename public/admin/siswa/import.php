@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Hapus BOM jika ada
                     $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0] ?? '');
 
-                    $expected = ['nis', 'nama', 'jenis_kelamin', 'tanggal_lahir', 'nama_ortu', 'no_hp_ortu', 'alamat', 'status', 'catatan'];
+                    $expected = ['nis', 'nama', 'jenis_kelamin', 'tanggal_lahir', 'nama_ortu', 'no_hp_ortu', 'email_ortu', 'alamat', 'status', 'catatan'];
                     $map = [];
                     foreach ($expected as $col) {
                         $idx = array_search($col, $header, true);
@@ -50,8 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($error === '') {
                         $line = 1; // header = baris 1
                         $ins = $pdo->prepare('INSERT INTO siswa
-                            (nis, nama, jenis_kelamin, tanggal_lahir, nama_ortu, no_hp_ortu, alamat, status, catatan)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                            (nis, nama, jenis_kelamin, tanggal_lahir, nama_ortu, no_hp_ortu, email_ortu, alamat, status, catatan)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
                         while (($row = fgetcsv($handle)) !== false) {
                             $line++;
@@ -88,6 +88,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $tgl = null;
                             }
 
+                            $emailOrtu = trim($row[$map['email_ortu']] ?? '');
+                            if ($emailOrtu !== '' && !filter_var($emailOrtu, FILTER_VALIDATE_EMAIL)) {
+                                $skip_count++;
+                                $errors_detail[] = "Baris {$line}: email orang tua tidak valid, dilewati.";
+                                continue;
+                            }
+
                             // Cek NIS duplikat
                             if ($nis !== '') {
                                 $cek = $pdo->prepare('SELECT id FROM siswa WHERE nis = ? LIMIT 1');
@@ -107,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $tgl,
                                     trim($row[$map['nama_ortu']] ?? '') ?: null,
                                     trim($row[$map['no_hp_ortu']] ?? '') ?: null,
+                                    $emailOrtu ?: null,
                                     trim($row[$map['alamat']] ?? '') ?: null,
                                     $status,
                                     trim($row[$map['catatan']] ?? '') ?: null,
@@ -170,7 +178,8 @@ ob_start();
                     <small>
                         <strong>jenis_kelamin:</strong> L atau P &nbsp;|&nbsp;
                         <strong>tanggal_lahir:</strong> YYYY-MM-DD (contoh 2018-05-20) &nbsp;|&nbsp;
-                        <strong>status:</strong> aktif / nonaktif / lulus
+                        <strong>status:</strong> aktif / nonaktif / lulus &nbsp;|&nbsp;
+                        <strong>email_ortu:</strong> format email valid (opsional)
                     </small>
                 </div>
 
@@ -195,4 +204,4 @@ ob_start();
 </div>
 <?php
 $content = ob_get_clean();
-require __DIR__ . '/../../../includes/layout_admin.php';    
+require __DIR__ . '/../../../includes/layout_admin.php';

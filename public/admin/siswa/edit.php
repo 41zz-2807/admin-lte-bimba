@@ -26,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'tanggal_lahir' => $_POST['tanggal_lahir'] ?? '',
         'nama_ortu'     => trim($_POST['nama_ortu'] ?? ''),
         'no_hp_ortu'    => trim($_POST['no_hp_ortu'] ?? ''),
+        'email_ortu'    => trim($_POST['email_ortu'] ?? ''),
         'alamat'        => trim($_POST['alamat'] ?? ''),
         'status'        => $_POST['status'] ?? 'aktif',
         'catatan'       => trim($_POST['catatan'] ?? ''),
@@ -37,6 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Jenis kelamin tidak valid.';
     } elseif (!in_array($data['status'], ['aktif', 'nonaktif', 'lulus'], true)) {
         $error = 'Status tidak valid.';
+    } elseif ($data['email_ortu'] !== '' && !filter_var($data['email_ortu'], FILTER_VALIDATE_EMAIL)) {
+        $error = 'Format email orang tua tidak valid.';
     } else {
         if ($data['nis'] !== '') {
             $cek = $pdo->prepare('SELECT id FROM siswa WHERE nis = ? AND id != ? LIMIT 1');
@@ -48,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($error === '') {
             $upd = $pdo->prepare('UPDATE siswa SET
-                nis=?, nama=?, jenis_kelamin=?, tanggal_lahir=?, nama_ortu=?, no_hp_ortu=?, alamat=?, status=?, catatan=?
+                nis=?, nama=?, jenis_kelamin=?, tanggal_lahir=?, nama_ortu=?, no_hp_ortu=?, email_ortu=?, alamat=?, status=?, catatan=?
                 WHERE id=?');
             $upd->execute([
                 $data['nis'] ?: null,
@@ -57,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $data['tanggal_lahir'] ?: null,
                 $data['nama_ortu'] ?: null,
                 $data['no_hp_ortu'] ?: null,
+                $data['email_ortu'] ?: null,
                 $data['alamat'] ?: null,
                 $data['status'],
                 $data['catatan'] ?: null,
@@ -124,6 +128,11 @@ ob_start();
                             <label class="form-label">No. HP Orang Tua</label>
                             <input type="text" name="no_hp_ortu" class="form-control" value="<?= e($s['no_hp_ortu'] ?? '') ?>">
                         </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email Orang Tua</label>
+                        <input type="email" name="email_ortu" class="form-control" placeholder="contoh@email.com"
+                               value="<?= e($s['email_ortu'] ?? '') ?>">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Alamat</label>

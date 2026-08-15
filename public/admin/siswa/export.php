@@ -9,7 +9,7 @@ ini_set('display_errors', '0');
 global $pdo;
 
 $siswa = $pdo->query(
-    'SELECT nis, nama, jenis_kelamin, tanggal_lahir, nama_ortu, no_hp_ortu, alamat, status, catatan
+    'SELECT nis, nama, jenis_kelamin, tanggal_lahir, nama_ortu, no_hp_ortu, email_ortu, alamat, status, catatan
      FROM siswa ORDER BY nama ASC'
 )->fetchAll();
 
@@ -33,6 +33,7 @@ $headers = [
     'tanggal_lahir',
     'nama_ortu',
     'no_hp_ortu',
+    'email_ortu',
     'alamat',
     'status',
     'catatan',
@@ -49,6 +50,7 @@ foreach ($siswa as $row) {
         $row['tanggal_lahir'] ?? '',
         $row['nama_ortu'] ?? '',
         $row['no_hp_ortu'] ?? '',
+        $row['email_ortu'] ?? '',
         $row['alamat'] ?? '',
         $row['status'] ?? 'aktif',
         $row['catatan'] ?? '',

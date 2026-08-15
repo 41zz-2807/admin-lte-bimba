@@ -24,9 +24,9 @@ $sql = 'SELECT * FROM siswa WHERE 1=1';
 $params = [];
 
 if ($q !== '') {
-    $sql .= ' AND (nama LIKE ? OR nis LIKE ? OR nama_ortu LIKE ? OR no_hp_ortu LIKE ?)';
+    $sql .= ' AND (nama LIKE ? OR nis LIKE ? OR nama_ortu LIKE ? OR no_hp_ortu LIKE ? OR email_ortu LIKE ?)';
     $like = '%' . $q . '%';
-    $params = array_merge($params, [$like, $like, $like, $like]);
+    $params = array_merge($params, [$like, $like, $like, $like, $like]);
 }
 if (in_array($status, ['aktif', 'nonaktif', 'lulus'], true)) {
     $sql .= ' AND status = ?';
@@ -54,7 +54,7 @@ ob_start();
     </div>
     <form method="get" class="d-flex flex-wrap gap-2">
         <input type="text" name="q" class="form-control form-control-sm" style="width:200px"
-               placeholder="Cari nama / NIS / ortu..." value="<?= e($q) ?>">
+               placeholder="Cari nama / NIS / ortu / email..." value="<?= e($q) ?>">
         <select name="status" class="form-select form-select-sm" style="width:130px">
             <option value="">Semua status</option>
             <option value="aktif" <?= $status === 'aktif' ? 'selected' : '' ?>>Aktif</option>
@@ -83,6 +83,7 @@ ob_start();
                     <th>Tgl Lahir</th>
                     <th>Nama Ortu</th>
                     <th>No. HP Ortu</th>
+                    <th>Email Ortu</th>
                     <th>Status</th>
                     <th style="width:120px">Aksi</th>
                 </tr>
@@ -90,7 +91,7 @@ ob_start();
             <tbody>
                 <?php if (empty($siswa)): ?>
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">Belum ada data siswa.</td>
+                        <td colspan="10" class="text-center text-muted py-4">Belum ada data siswa.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($siswa as $i => $s): ?>
@@ -102,6 +103,7 @@ ob_start();
                             <td><?= $s['tanggal_lahir'] ? e(date('d/m/Y', strtotime($s['tanggal_lahir']))) : '-' ?></td>
                             <td><?= e($s['nama_ortu'] ?: '-') ?></td>
                             <td><?= e($s['no_hp_ortu'] ?: '-') ?></td>
+                            <td><?= e($s['email_ortu'] ?: '-') ?></td>
                             <td>
                                 <?php
                                 $badge = match ($s['status']) {

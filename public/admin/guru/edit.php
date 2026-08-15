@@ -105,7 +105,14 @@ ob_start();
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Jabatan</label>
-                            <input type="text" name="jabatan" class="form-control" value="<?= e($r['jabatan'] ?? '') ?>">
+                             <select name="jabatan" class="form-select">
+                                    <option value="">-- Pilih Jabatan --</option>
+                                    <option value="Kepala Sekolah" <?= ($r['jabatan'] ?? '') === 'Kepala Sekolah' ? 'selected' : '' ?>>Kepala Sekolah</option>
+                                    <option value="Guru" <?= ($r['jabatan'] ?? '') === 'Guru' ? 'selected' : '' ?>>Guru</option>
+                                    <option value="Staff" <?= ($r['jabatan'] ?? '') === 'Staff' ? 'selected' : '' ?>>Staff</option>
+                                    <option value="Admin" <?= ($r['jabatan'] ?? '') === 'Admin' ? 'selected' : '' ?>>Admin</option>
+                                    <option value="Karyawan" <?= ($r['jabatan'] ?? '') === 'Karyawan' ? 'selected' : '' ?>>Karyawan</option>
+                            </select>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Status</label>
