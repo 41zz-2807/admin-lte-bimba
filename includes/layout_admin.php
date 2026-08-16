@@ -144,6 +144,7 @@ $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
             <p>Galeri</p>
         </a>
     </li>
+    <!-- 
     <li class="nav-item">
         <a href="#" class="nav-link">
             <i class="nav-icon bi bi-calendar3"></i>
@@ -157,6 +158,7 @@ $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
             <p>Laporan</p>
         </a>
     </li>
+    -->
 
     <?php if (is_superadmin()): ?>
     <li class="nav-header">SUPERADMIN</li>
