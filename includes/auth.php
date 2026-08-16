@@ -75,6 +75,11 @@ function require_login(): void
     if (!is_logged_in()) {
         redirect('admin/login.php');
     }
+    // Blokir wali masuk panel admin
+    $role = current_user()['role'] ?? '';
+    if ($role === 'wali_murid') {
+        redirect('wali/');
+    }
 }
 
 function require_role(string|array $roles): void
@@ -90,3 +95,56 @@ function require_superadmin(): void
 {
     require_role('superadmin');
 }
+function is_wali(): bool
+{
+    return has_role('wali_murid');
+}
+
+function is_admin_area(): bool
+{
+    return has_role(['superadmin', 'admin']);
+}
+
+function require_wali_login(): void
+{
+    if (!is_logged_in()) {
+        redirect('wali/login.php');
+    }
+    if (!is_wali()) {
+        // admin yang nyasar ke portal wali
+        redirect('admin/');
+    }
+}
+
+function require_admin_login(): void
+{
+    if (!is_logged_in()) {
+        redirect('admin/login.php');
+    }
+    if (!is_admin_area()) {
+        // wali yang nyasar ke admin
+        redirect('wali/');
+    }
+}
+
+/**
+ * Ambil daftar anak milik wali yang sedang login
+ */
+function wali_get_anak(): array
+{
+    global $pdo;
+    $user = current_user();
+    if (!$user || !is_wali()) {
+        return [];
+    }
+    $st = $pdo->prepare(
+        'SELECT s.*, sw.hubungan
+         FROM siswa_wali sw
+         JOIN siswa s ON s.id = sw.siswa_id
+         WHERE sw.user_id = ?
+         ORDER BY s.status ASC, s.nama ASC'
+    );
+    $st->execute([$user['id']]);
+    return $st->fetchAll();
+}
+?>

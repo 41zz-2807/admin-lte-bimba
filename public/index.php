@@ -138,11 +138,12 @@ $tests = [
                 </a>
                 <div class="hidden md:flex items-center space-x-8">
                     <a href="/" class="text-brand-blue font-bold hover:text-brand-red transition">Home</a>
-                    <a href="#fasilitas" class="text-gray-600 font-semibold hover:text-brand-yellow transition">Galeri</a>
+                    <a href="/galeri.php" class="text-gray-600 font-semibold hover:text-brand-yellow transition">Galeri</a>
                     <a href="#pengajar" class="text-gray-600 font-semibold hover:text-brand-yellow transition">Kalender</a>
                     <a href="#testimoni" class="text-gray-600 font-semibold hover:text-brand-yellow transition">Berita</a>
-                    <a href="/admin/login.php" class="bg-brand-red hover:bg-red-600 text-white px-6 py-2 rounded-full font-bold shadow-md transition transform hover:scale-105">
-                        <i class="fa-solid fa-right-to-bracket mr-1"></i> Login
+                    <a href="/login.php"
+                        class="bg-brand-red hover:bg-red-600 text-white px-5 py-2 rounded-full font-bold shadow-md transition">
+                        Login
                     </a>
                 </div>
                 <div class="md:hidden flex items-center">
@@ -154,7 +155,7 @@ $tests = [
         </div>
         <div id="mobileMenu" class="hidden md:hidden bg-white border-t px-4 pb-4">
             <a href="/" class="block py-2 font-semibold text-brand-blue">Home</a>
-            <a href="#fasilitas" class="block py-2 text-gray-600">Galeri</a>
+            <a href="/galeri.php" class="text-gray-600 font-semibold hover:text-brand-yellow transition">Galeri</a>
             <a href="#pengajar" class="block py-2 text-gray-600">Kalender</a>
             <a href="#testimoni" class="block py-2 text-gray-600">Berita</a>
             <a href="/admin/login.php" class="inline-block mt-2 bg-brand-red text-white px-5 py-2 rounded-full font-bold">Login</a>

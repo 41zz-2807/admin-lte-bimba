@@ -77,6 +77,7 @@ ob_start();
             <thead>
                 <tr>
                     <th style="width:40px">#</th>
+                    <th style="width:56px">Foto</th>
                     <th>NIS</th>
                     <th>Nama</th>
                     <th>JK</th>
@@ -91,12 +92,24 @@ ob_start();
             <tbody>
                 <?php if (empty($siswa)): ?>
                     <tr>
-                        <td colspan="10" class="text-center text-muted py-4">Belum ada data siswa.</td>
+                        <td colspan="11" class="text-center text-muted py-4">Belum ada data siswa.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($siswa as $i => $s): ?>
                         <tr>
                             <td><?= $i + 1 ?></td>
+                            <td>
+        <?php if (!empty($s['foto_url'])): ?>
+            <img src="/uploads/<?= e($s['foto_url']) ?>"
+                 alt=""
+                 style="width:40px;height:40px;object-fit:cover;border-radius:6px">
+        <?php else: ?>
+            <div class="bg-secondary text-white d-flex align-items-center justify-content-center rounded"
+                 style="width:40px;height:40px;font-size:14px">
+                <i class="bi bi-person"></i>
+            </div>
+        <?php endif; ?>
+    </td>
                             <td><?= e($s['nis'] ?: '-') ?></td>
                             <td><?= e($s['nama']) ?></td>
                             <td><?= $s['jenis_kelamin'] === 'L' ? 'L' : 'P' ?></td>

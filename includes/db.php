@@ -26,3 +26,4 @@ try {
     }
     die('Terjadi kesalahan sistem.');
 }
+?>

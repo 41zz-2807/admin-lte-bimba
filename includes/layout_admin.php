@@ -121,9 +121,27 @@ $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
         </a>
     </li>
     <li class="nav-item">
+        <a href="/admin/konfirmasi-bayar/" class="nav-link <?= str_contains($currentPath, '/admin/konfirmasi-bayar') ? 'active' : '' ?>">
+            <i class="nav-icon bi bi-receipt"></i>
+            <p>Konfirmasi Bayar</p>
+            </a>
+    </li>
+    <li class="nav-item">
+        <a href="/admin/wali/" class="nav-link <?= str_contains($currentPath, '/admin/wali') ? 'active' : '' ?>">
+            <i class="nav-icon bi bi-person-heart"></i>
+            <p>Akun Wali Murid</p>
+            </a>
+    </li>
+    <li class="nav-item">
         <a href="/admin/landing/" class="nav-link <?= str_contains($currentPath, '/admin/landing') ? 'active' : '' ?>">
             <i class="nav-icon bi bi-window"></i>
             <p>Landing Page</p>
+        </a>
+    </li>
+        <li class="nav-item">
+        <a href="/admin/galeri/" class="nav-link <?= str_contains($currentPath, '/admin/galeri') ? 'active' : '' ?>">
+            <i class="nav-icon bi bi-images"></i>
+            <p>Galeri</p>
         </a>
     </li>
     <li class="nav-item">
