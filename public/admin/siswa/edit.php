@@ -17,6 +17,16 @@ if (!$s) {
     redirect('admin/siswa/');
 }
 
+// Daftar tahun ajaran
+$daftarTA = [];
+try {
+    $daftarTA = $pdo->query(
+        'SELECT kode, tarif_spp, is_aktif FROM tahun_ajaran ORDER BY kode DESC'
+    )->fetchAll();
+} catch (PDOException $e) {
+    $daftarTA = [];
+}
+
 $waliLinked = $pdo->prepare(
     'SELECT u.id, u.name, u.email, u.is_active, sw.hubungan
      FROM siswa_wali sw
@@ -37,8 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'email_ortu'    => trim($_POST['email_ortu'] ?? ''),
         'alamat'        => trim($_POST['alamat'] ?? ''),
         'status'        => $_POST['status'] ?? 'aktif',
+        'tahun_ajaran'  => trim($_POST['tahun_ajaran'] ?? ''),
         'catatan'       => trim($_POST['catatan'] ?? ''),
     ];
+
+    $taValid = array_column($daftarTA, 'kode');
 
     if ($data['nama'] === '') {
         $error = 'Nama siswa wajib diisi.';
@@ -46,6 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Jenis kelamin tidak valid.';
     } elseif (!in_array($data['status'], ['aktif', 'nonaktif', 'lulus'], true)) {
         $error = 'Status tidak valid.';
+    } elseif ($data['tahun_ajaran'] !== '' && !in_array($data['tahun_ajaran'], $taValid, true)) {
+        $error = 'Tahun ajaran tidak valid.';
     } elseif ($data['email_ortu'] !== '' && !filter_var($data['email_ortu'], FILTER_VALIDATE_EMAIL)) {
         $error = 'Format email orang tua tidak valid.';
     } else {
@@ -68,9 +83,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($error === '') {
-            $upd = $pdo->prepare('UPDATE siswa SET
-                nis=?, nama=?, jenis_kelamin=?, tanggal_lahir=?, nama_ortu=?, no_hp_ortu=?, email_ortu=?, alamat=?, status=?, catatan=?, foto_url=?
-                WHERE id=?');
+            $upd = $pdo->prepare(
+                'UPDATE siswa SET
+                 nis=?, nama=?, jenis_kelamin=?, tanggal_lahir=?, nama_ortu=?, no_hp_ortu=?,
+                 email_ortu=?, alamat=?, status=?, tahun_ajaran=?, catatan=?, foto_url=?
+                 WHERE id=?'
+            );
             $upd->execute([
                 $data['nis'] ?: null,
                 $data['nama'],
@@ -81,47 +99,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $data['email_ortu'] ?: null,
                 $data['alamat'] ?: null,
                 $data['status'],
+                $data['tahun_ajaran'] ?: null,
                 $data['catatan'] ?: null,
                 $fotoUrl,
                 $id,
             ]);
 
-            $pesanWali = '';
-            if (isset($_POST['buat_wali'])) {
-                $waliEmail = trim($_POST['wali_email'] ?? '');
-                $waliPass  = $_POST['wali_password'] ?? '';
-                $waliNama  = trim($_POST['wali_nama'] ?? '') ?: ($data['nama_ortu'] ?: $data['nama'] . ' - Wali');
-                $hubungan  = trim($_POST['wali_hubungan'] ?? 'Orang tua') ?: 'Orang tua';
+            // Auto buat / tautkan akun wali (jika email diisi)
+            $waliResult = ensure_wali_for_siswa(
+                $id,
+                $data['nama'],
+                $data['nama_ortu'] ?: null,
+                $data['email_ortu'] ?: null,
+                'Orang tua'
+            );
 
-                if ($waliEmail === '' || !filter_var($waliEmail, FILTER_VALIDATE_EMAIL)) {
-                    $pesanWali = ' Email wali tidak valid — akun tidak dibuat.';
-                } elseif (strlen($waliPass) < 8) {
-                    $pesanWali = ' Password wali < 8 karakter — akun tidak dibuat.';
-                } else {
-                    $cek = $pdo->prepare('SELECT id, role FROM users WHERE email = ? LIMIT 1');
-                    $cek->execute([$waliEmail]);
-                    $exist = $cek->fetch();
-                    if ($exist) {
-                        if ($exist['role'] === 'wali_murid') {
-                            $pdo->prepare('INSERT IGNORE INTO siswa_wali (user_id, siswa_id, hubungan) VALUES (?,?,?)')
-                                ->execute([(int)$exist['id'], $id, $hubungan]);
-                            $pesanWali = ' Ditautkan ke akun wali yang sudah ada.';
-                        } else {
-                            $pesanWali = ' Email sudah dipakai akun non-wali.';
-                        }
-                    } else {
-                        $hash = password_hash($waliPass, PASSWORD_DEFAULT);
-                        $pdo->prepare('INSERT INTO users (name, email, password, role, is_active) VALUES (?,?,?,?,1)')
-                            ->execute([$waliNama, $waliEmail, $hash, 'wali_murid']);
-                        $uid = (int) $pdo->lastInsertId();
-                        $pdo->prepare('INSERT INTO siswa_wali (user_id, siswa_id, hubungan) VALUES (?,?,?)')
-                            ->execute([$uid, $id, $hubungan]);
-                        $pesanWali = ' Akun wali dibuat (' . $waliEmail . ').';
-                    }
-                }
-            }
-
-            set_flash('success', 'Data siswa berhasil diperbarui.' . $pesanWali);
+            set_flash('success', 'Data siswa berhasil diperbarui.' . $waliResult['message']);
             redirect('admin/siswa/');
         }
     }
@@ -138,6 +131,7 @@ ob_start();
 <?php if ($error): ?>
 <div class="alert alert-danger"><?= e($error) ?></div>
 <?php endif; ?>
+
 <form method="post" action="" enctype="multipart/form-data">
 <div class="row">
 <div class="col-md-4 mb-3">
@@ -170,6 +164,26 @@ ob_start();
 </select>
 </div>
 </div>
+
+<div class="row">
+<div class="col-md-6 mb-3">
+<label class="form-label">Tahun Ajaran</label>
+<select name="tahun_ajaran" class="form-select">
+  <option value="">— pilih —</option>
+  <?php foreach ($daftarTA as $ta): ?>
+    <option value="<?= e($ta['kode']) ?>"
+      <?= ($s['tahun_ajaran'] ?? '') === $ta['kode'] ? 'selected' : '' ?>>
+      <?= e($ta['kode']) ?>
+      <?php if ((float)$ta['tarif_spp'] > 0): ?>
+        — Rp <?= number_format((float)$ta['tarif_spp'], 0, ',', '.') ?>/bln
+      <?php endif; ?>
+      <?= (int)$ta['is_aktif'] === 1 ? ' (aktif)' : '' ?>
+    </option>
+  <?php endforeach; ?>
+</select>
+</div>
+</div>
+
 <div class="row">
 <div class="col-md-6 mb-3">
 <label class="form-label">Nama Orang Tua / Wali</label>
@@ -182,7 +196,12 @@ ob_start();
 </div>
 <div class="mb-3">
 <label class="form-label">Email Orang Tua</label>
-<input type="email" name="email_ortu" class="form-control" placeholder="contoh@email.com" value="<?= e($s['email_ortu'] ?? '') ?>">
+<input type="email" name="email_ortu" class="form-control" placeholder="contoh@email.com"
+       value="<?= e($s['email_ortu'] ?? '') ?>">
+<div class="form-text">
+  Jika diisi: sistem otomatis buat / tautkan akun portal wali dan kirim email.
+  Kosongkan jika belum perlu.
+</div>
 </div>
 <div class="mb-3">
 <label class="form-label">Alamat</label>
@@ -203,46 +222,22 @@ ob_start();
 <hr>
 <div class="card bg-light border mb-3">
   <div class="card-body">
-    <h6 class="mb-2">Portal Wali Murid</h6>
+    <h6 class="mb-2">Portal Wali Murid (tertaut)</h6>
     <?php if ($waliList): ?>
-      <ul class="mb-3">
+      <ul class="mb-0">
         <?php foreach ($waliList as $w): ?>
           <li>
             <?= e($w['name']) ?> — <?= e($w['email']) ?> (<?= e($w['hubungan']) ?>)
-            <span class="badge text-bg-<?= $w['is_active'] ? 'success' : 'secondary' ?>"><?= $w['is_active'] ? 'Aktif' : 'Nonaktif' ?></span>
+            <span class="badge text-bg-<?= $w['is_active'] ? 'success' : 'secondary' ?>">
+              <?= $w['is_active'] ? 'Aktif' : 'Nonaktif' ?>
+            </span>
             <a href="/admin/wali/edit.php?id=<?= (int)$w['id'] ?>" class="small">Kelola</a>
           </li>
         <?php endforeach; ?>
       </ul>
     <?php else: ?>
-      <p class="text-muted small mb-2">Belum ada akun wali tertaut.</p>
+      <p class="text-muted small mb-0">Belum ada akun wali tertaut. Isi email ortu lalu simpan untuk membuat/menautkan.</p>
     <?php endif; ?>
-
-    <div class="form-check mb-2">
-      <input type="checkbox" class="form-check-input" name="buat_wali" id="buat_wali"
-             onchange="document.getElementById('wali_fields').style.display=this.checked?'block':'none'">
-      <label class="form-check-label fw-semibold" for="buat_wali">Buat / tautkan akun wali</label>
-    </div>
-    <div id="wali_fields" style="display:none">
-      <div class="row g-2">
-        <div class="col-md-6">
-          <label class="form-label">Nama Wali</label>
-          <input type="text" name="wali_nama" class="form-control">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Hubungan</label>
-          <input type="text" name="wali_hubungan" class="form-control" value="Orang tua">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Email login *</label>
-          <input type="email" name="wali_email" class="form-control">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Password *</label>
-          <input type="text" name="wali_password" class="form-control" minlength="8">
-        </div>
-      </div>
-    </div>
   </div>
 </div>
 

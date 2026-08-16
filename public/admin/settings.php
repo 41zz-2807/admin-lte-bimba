@@ -18,6 +18,16 @@ $keys = [
     'telegram_bot_token', 'telegram_chat_id',
 ];
 
+// ---- Tahun ajaran list (aktif ± 2 tahun) ----
+$yNow  = (int) date('Y');
+$start = (date('n') >= 7) ? $yNow : $yNow - 1;
+$tahunAjaranList = [];
+for ($i = -2; $i <= 2; $i++) {
+    $a = $start + $i;
+    $tahunAjaranList[] = $a . '/' . ($a + 1);
+}
+$defaultTACalc = $start . '/' . ($start + 1);
+
 // Simpan SMTP
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_smtp'])) {
     foreach (['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_from_name', 'smtp_secure'] as $k) {
@@ -36,6 +46,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_telegram'])) {
     set_setting('telegram_bot_token', trim($_POST['telegram_bot_token'] ?? ''));
     set_setting('telegram_chat_id', trim($_POST['telegram_chat_id'] ?? ''));
     set_flash('success', 'Pengaturan Telegram berhasil disimpan.');
+    redirect('admin/settings.php');
+}
+
+// ---- Tahun Ajaran: tambah / update tarif ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_ta'])) {
+    $kode  = trim($_POST['kode'] ?? '');
+    $tarif = (int) preg_replace('/[^\d]/', '', (string)($_POST['tarif_spp'] ?? '0'));
+
+    if (!preg_match('/^\d{4}\/\d{4}$/', $kode)) {
+        $error = 'Format tahun ajaran salah. Contoh: 2026/2027';
+    } elseif ($tarif <= 0) {
+        $error = 'Tarif SPP harus lebih dari 0.';
+    } else {
+        $st = $pdo->prepare(
+            'INSERT INTO tahun_ajaran (kode, tarif_spp)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE tarif_spp = VALUES(tarif_spp)'
+        );
+        $st->execute([$kode, $tarif]);
+        set_flash('success', 'Tahun ajaran ' . $kode . ' disimpan (Rp ' . number_format($tarif, 0, ',', '.') . '/bulan).');
+        redirect('admin/settings.php');
+    }
+}
+
+// Set aktif
+if (isset($_GET['set_aktif_ta'])) {
+    $id = (int) $_GET['set_aktif_ta'];
+    $pdo->exec('UPDATE tahun_ajaran SET is_aktif = 0');
+    $pdo->prepare('UPDATE tahun_ajaran SET is_aktif = 1 WHERE id = ?')->execute([$id]);
+    set_flash('success', 'Tahun ajaran aktif berhasil diubah.');
+    redirect('admin/settings.php');
+}
+
+// Hapus
+if (isset($_GET['hapus_ta'])) {
+    $id = (int) $_GET['hapus_ta'];
+    $pdo->prepare('DELETE FROM tahun_ajaran WHERE id = ?')->execute([$id]);
+    set_flash('success', 'Tahun ajaran dihapus.');
     redirect('admin/settings.php');
 }
 
@@ -82,6 +130,16 @@ foreach ($keys as $k) {
     });
 }
 
+$tahunAjaranAktif = get_setting('tahun_ajaran_aktif', $defaultTACalc);
+$tarifMap = [];
+foreach ($tahunAjaranList as $ta) {
+    $tarifMap[$ta] = (int) get_setting('tarif_spp_' . $ta, '0');
+}
+
+$daftarTA = $pdo->query(
+    'SELECT * FROM tahun_ajaran ORDER BY kode DESC'
+)->fetchAll();
+
 ob_start();
 ?>
 <?php if ($error): ?>
@@ -90,6 +148,102 @@ ob_start();
 <?php if ($success): ?>
     <div class="alert alert-success"><?= e($success) ?></div>
 <?php endif; ?>
+
+<!-- ===== TAHUN AJARAN & TARIF SPP ===== -->
+<div class="row mb-3">
+  <div class="col-lg-8">
+    <div class="card border-success">
+      <div class="card-header bg-success text-white">
+        <h3 class="card-title mb-0">
+          <i class="bi bi-cash-coin me-1"></i> Tahun Ajaran & Tarif SPP
+        </h3>
+      </div>
+      <div class="card-body">
+
+        <!-- Form input manual -->
+        <form method="post" class="row g-2 align-items-end mb-4">
+          <div class="col-md-4">
+            <label class="form-label">Tahun Ajaran</label>
+            <input type="text" name="kode" class="form-control"
+                   placeholder="2026/2027" required
+                   pattern="\d{4}/\d{4}"
+                   title="Format: 2026/2027">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Tarif SPP / bulan (Rp)</label>
+            <div class="input-group">
+              <span class="input-group-text">Rp</span>
+              <input type="text" name="tarif_spp" class="form-control"
+                     placeholder="200000" required inputmode="numeric">
+            </div>
+          </div>
+          <div class="col-md-4">
+            <button type="submit" name="save_ta" value="1" class="btn btn-success w-100">
+              <i class="bi bi-plus-lg me-1"></i> Simpan
+            </button>
+          </div>
+          <div class="col-12">
+            <div class="form-text">
+              Contoh: isi <code>2026/2027</code> dan <code>200000</code> lalu klik Simpan.
+              Jika kode sudah ada, tarifnya akan di-update.
+            </div>
+          </div>
+        </form>
+
+        <!-- Daftar yang sudah tersimpan -->
+        <label class="form-label fw-semibold">Daftar Tahun Ajaran</label>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Tahun Ajaran</th>
+                <th>Tarif / bulan</th>
+                <th>Status</th>
+                <th width="160"></th>
+              </tr>
+            </thead>
+            <tbody>
+            <?php if (!$daftarTA): ?>
+              <tr>
+                <td colspan="4" class="text-center text-muted py-3">
+                  Belum ada data. Silakan input di atas.
+                </td>
+              </tr>
+            <?php else: foreach ($daftarTA as $ta): ?>
+              <tr>
+                <td><strong><?= e($ta['kode']) ?></strong></td>
+                <td>Rp <?= number_format((float)$ta['tarif_spp'], 0, ',', '.') ?></td>
+                <td>
+                  <?php if ((int)$ta['is_aktif'] === 1): ?>
+                    <span class="badge text-bg-success">Aktif</span>
+                  <?php else: ?>
+                    <span class="badge text-bg-secondary">Nonaktif</span>
+                  <?php endif; ?>
+                </td>
+                <td class="text-nowrap">
+                  <?php if ((int)$ta['is_aktif'] !== 1): ?>
+                    <a href="?set_aktif_ta=<?= (int)$ta['id'] ?>"
+                       class="btn btn-sm btn-outline-success"
+                       onclick="return confirm('Jadikan <?= e($ta['kode']) ?> sebagai tahun ajaran aktif?')">
+                      Set Aktif
+                    </a>
+                  <?php endif; ?>
+                  <a href="?hapus_ta=<?= (int)$ta['id'] ?>"
+                     class="btn btn-sm btn-outline-danger"
+                     onclick="return confirm('Hapus tahun ajaran <?= e($ta['kode']) ?>?')">
+                    Hapus
+                  </a>
+                </td>
+              </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="row">
     <!-- SMTP -->
@@ -250,6 +404,20 @@ ob_start();
         </div>
     </div>
 </div>
+
+<script>
+// Format input tarif: 200000 → 200.000 saat blur
+document.querySelectorAll('.tarif-input').forEach(function (el) {
+    el.addEventListener('blur', function () {
+        var n = this.value.replace(/[^\d]/g, '');
+        if (n === '' || parseInt(n, 10) === 0) {
+            this.value = '';
+            return;
+        }
+        this.value = parseInt(n, 10).toLocaleString('id-ID');
+    });
+});
+</script>
 <?php
 $content = ob_get_clean();
 require __DIR__ . '/../../includes/layout_admin.php';

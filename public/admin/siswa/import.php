@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Tidak bisa membaca file.';
             } else {
                 // Baca header
-                $header = fgetcsv($handle);
+                $header = fgetcsv($handle, 0, ',', '"', '"');
                 if ($header === false) {
                     $error = 'File kosong atau tidak valid.';
                 } else {
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             (nis, nama, jenis_kelamin, tanggal_lahir, nama_ortu, no_hp_ortu, email_ortu, alamat, status, catatan)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
-                        while (($row = fgetcsv($handle)) !== false) {
+                        while (($row = fgetcsv($handle, 0, ',', '"', '"')) !== false) {
                             $line++;
 
                             // Skip baris kosong

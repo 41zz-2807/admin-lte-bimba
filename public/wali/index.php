@@ -68,7 +68,9 @@ $app = require __DIR__ . '/../../config/app.php';
         Hubungan: <?= e($a['hubungan'] ?: 'Orang tua') ?>
       </p>
       <a href="/wali/anak.php?id=<?= (int)$a['id'] ?>" class="btn btn-sm btn-success">Lihat Profil</a>
-      <a href="/wali/pembayaran.php" class="btn btn-sm btn-primary">Pembayaran</a>
+      <a href="/wali/pembayaran.php?siswa_id=<?= (int)$a['id'] ?>" class="btn btn-sm btn-success">
+  Bayar SPP
+</a>    
     </div>
   </div>
 </div>

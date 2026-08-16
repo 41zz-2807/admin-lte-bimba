@@ -250,4 +250,170 @@ function upload_image(array $file, string $subdir = 'landing', int $maxMb = 5): 
 
     return $subdir . '/' . $name; // contoh: landing/20260815_xxx.jpg
 }
+/**
+ * Password acak: 2 kata Indonesia + 4 digit (tanpa spesial karakter)
+ * Contoh: rumahsekolah4821
+ */
+function generate_wali_password(): string
+{
+    $kata = [
+        'rumah', 'sekolah', 'anak', 'buku', 'meja', 'kursi', 'pintu', 'jendela',
+        'matahari', 'bulan', 'bintang', 'awan', 'hujan', 'pelangi', 'sungai', 'gunung',
+        'pohon', 'bunga', 'daun', 'buah', 'apel', 'mangga', 'pisang', 'jeruk',
+        'kucing', 'anjing', 'burung', 'ikan', 'kuda', 'sapi', 'ayam', 'bebek',
+        'merah', 'biru', 'hijau', 'kuning', 'putih', 'hitam', 'orange', 'ungu',
+        'pagi', 'siang', 'sore', 'malam', 'senin', 'selasa', 'rabu', 'kamis',
+        'senyum', 'bahagia', 'semangat', 'rajin', 'pintar', 'cerdas', 'baik', 'ramah',
+        'tangan', 'kaki', 'mata', 'telinga', 'hidung', 'mulut', 'kepala', 'rambut',
+        'air', 'api', 'tanah', 'angin', 'laut', 'pantai', 'hutan', 'desa',
+        'kota', 'jalan', 'pasar', 'toko', 'mobil', 'motor', 'sepeda', 'kereta',
+    ];
+    $k1 = $kata[random_int(0, count($kata) - 1)];
+    $k2 = $kata[random_int(0, count($kata) - 1)];
+    // pastikan tidak sama
+    if ($k2 === $k1) {
+        $k2 = $kata[(array_search($k1, $kata, true) + 7) % count($kata)];
+    }
+    $angka = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+    return $k1 . $k2 . $angka;
+}
+
+/**
+ * Buat / tautkan akun wali setelah siswa disimpan.
+ *
+ * Return array:
+ *   status: created | linked | skipped | error
+ *   message: teks untuk flash admin
+ *   user_id: int|null
+ *   plain_password: string|null  (hanya jika created)
+ */
+function ensure_wali_for_siswa(
+    int $siswaId,
+    string $namaSiswa,
+    ?string $namaOrtu,
+    ?string $emailOrtu,
+    string $hubungan = 'Orang tua'
+): array {
+    global $pdo;
+
+    $emailOrtu = trim((string) $emailOrtu);
+    $namaOrtu  = trim((string) ($namaOrtu ?: ''));
+    if ($namaOrtu === '') {
+        $namaOrtu = $namaSiswa . ' - Wali';
+    }
+
+    // Email kosong → skip
+    if ($emailOrtu === '') {
+        return [
+            'status'         => 'skipped',
+            'message'        => ' Email ortu kosong — akun wali tidak dibuat.',
+            'user_id'        => null,
+            'plain_password' => null,
+        ];
+    }
+
+    if (!filter_var($emailOrtu, FILTER_VALIDATE_EMAIL)) {
+        return [
+            'status'         => 'error',
+            'message'        => ' Email ortu tidak valid — akun wali tidak dibuat.',
+            'user_id'        => null,
+            'plain_password' => null,
+        ];
+    }
+
+    $st = $pdo->prepare('SELECT id, name, role, is_active FROM users WHERE email = ? LIMIT 1');
+    $st->execute([$emailOrtu]);
+    $exist = $st->fetch();
+
+    // Email dipakai role non-wali
+    if ($exist && $exist['role'] !== 'wali_murid') {
+        return [
+            'status'         => 'error',
+            'message'        => ' Email sudah dipakai akun ' . $exist['role'] . ' — akun wali tidak dibuat.',
+            'user_id'        => null,
+            'plain_password' => null,
+        ];
+    }
+
+    $app     = require __DIR__ . '/../config/app.php';
+    $appName = $app['name'] ?? 'Bimba KSR';
+    $loginUrl = rtrim($app['url'] ?? '', '/') . '/login.php';
+    $lupaUrl  = rtrim($app['url'] ?? '', '/') . '/wali/lupa-password.php';
+
+    // --- Akun sudah ada: tautkan saja ---
+    if ($exist && $exist['role'] === 'wali_murid') {
+        $uid = (int) $exist['id'];
+        $pdo->prepare(
+            'INSERT IGNORE INTO siswa_wali (user_id, siswa_id, hubungan) VALUES (?,?,?)'
+        )->execute([$uid, $siswaId, $hubungan]);
+
+        // Notifikasi tanpa password
+        $body = "Halo {$exist['name']},\n\n"
+            . "Anak baru telah ditambahkan ke akun Portal Wali Anda di {$appName}.\n\n"
+            . "Nama anak : {$namaSiswa}\n"
+            . "Login     : {$loginUrl}\n"
+            . "Email     : {$emailOrtu}\n\n"
+            . "Jika lupa password, gunakan:\n{$lupaUrl}\n\n"
+            . "Terima kasih.\n{$appName}";
+
+        $mailResult = send_smtp_mail(
+            $emailOrtu,
+            "Anak baru ditambahkan — {$appName}",
+            $body,
+            $exist['name']
+        );
+
+        $extra = ($mailResult === true)
+            ? ' Notifikasi email terkirim.'
+            : ' Gagal kirim email: ' . $mailResult;
+
+        return [
+            'status'         => 'linked',
+            'message'        => ' Ditautkan ke akun wali yang sudah ada.' . $extra,
+            'user_id'        => $uid,
+            'plain_password' => null,
+        ];
+    }
+
+    // --- Buat akun baru ---
+    $plain = generate_wali_password();
+    $hash  = password_hash($plain, PASSWORD_DEFAULT);
+
+    $pdo->prepare(
+        'INSERT INTO users (name, email, password, role, is_active) VALUES (?,?,?,?,1)'
+    )->execute([$namaOrtu, $emailOrtu, $hash, 'wali_murid']);
+    $uid = (int) $pdo->lastInsertId();
+
+    $pdo->prepare(
+        'INSERT INTO siswa_wali (user_id, siswa_id, hubungan) VALUES (?,?,?)'
+    )->execute([$uid, $siswaId, $hubungan]);
+
+    $body = "Halo {$namaOrtu},\n\n"
+        . "Akun Portal Wali Murid {$appName} telah dibuat untuk Anda.\n\n"
+        . "Nama anak : {$namaSiswa}\n"
+        . "Login     : {$loginUrl}\n"
+        . "Username  : {$emailOrtu}\n"
+        . "Password  : {$plain}\n\n"
+        . "Silakan login dan segera ganti password di menu Ganti Password.\n"
+        . "Jika lupa password nanti: {$lupaUrl}\n\n"
+        . "Terima kasih.\n{$appName}";
+
+    $mailResult = send_smtp_mail(
+        $emailOrtu,
+        "Akun Portal Wali — {$appName}",
+        $body,
+        $namaOrtu
+    );
+
+    $extra = ($mailResult === true)
+        ? ' Email username & password terkirim.'
+        : ' Gagal kirim email: ' . $mailResult;
+
+    return [
+        'status'         => 'created',
+        'message'        => ' Akun wali dibuat (' . $emailOrtu . ').' . $extra,
+        'user_id'        => $uid,
+        'plain_password' => $plain,
+    ];
+}
 ?>

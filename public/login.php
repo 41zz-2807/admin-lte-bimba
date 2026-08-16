@@ -77,6 +77,9 @@ $app = require __DIR__ . '/../config/app.php';
       <div class="text-center mt-3">
         <a href="/" class="text-muted small">← Kembali ke website</a>
       </div>
+      <div class="text-center mt-2">
+            <a href="/wali/lupa-password.php" class="small">Lupa password? (Portal Wali)</a>
+        </div>
     </div>
   </div>
 </div>

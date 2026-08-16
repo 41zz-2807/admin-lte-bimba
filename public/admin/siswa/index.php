@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../../../includes/auth.php';
 require_once __DIR__ . '/../../../includes/flash.php';
-
+require_once __DIR__ . '/../../../includes/helpers.php';
 require_login();
 
 $pageTitle = 'Data Siswa';
@@ -16,9 +16,18 @@ if (isset($_GET['delete'])) {
     redirect('admin/siswa/');
 }
 
-// Filter sederhana
-$q = trim($_GET['q'] ?? '');
+// Filter
+$q      = trim($_GET['q'] ?? '');
 $status = $_GET['status'] ?? '';
+$ta     = trim($_GET['tahun_ajaran'] ?? '');
+
+// Daftar TA untuk filter
+$daftarTA = [];
+try {
+    $daftarTA = $pdo->query('SELECT kode FROM tahun_ajaran ORDER BY kode DESC')->fetchAll(PDO::FETCH_COLUMN);
+} catch (PDOException $e) {
+    $daftarTA = [];
+}
 
 $sql = 'SELECT * FROM siswa WHERE 1=1';
 $params = [];
@@ -32,6 +41,10 @@ if (in_array($status, ['aktif', 'nonaktif', 'lulus'], true)) {
     $sql .= ' AND status = ?';
     $params[] = $status;
 }
+if ($ta !== '' && in_array($ta, $daftarTA, true)) {
+    $sql .= ' AND tahun_ajaran = ?';
+    $params[] = $ta;
+}
 $sql .= ' ORDER BY nama ASC';
 
 $stmt = $pdo->prepare($sql);
@@ -42,10 +55,10 @@ ob_start();
 ?>
 <div class="mb-3 d-flex flex-wrap gap-2 justify-content-between">
     <div class="d-flex flex-wrap gap-2">
-    <a href="/admin/siswa/create.php" class="btn btn-primary">
-        <i class="bi bi-plus-lg me-1"></i> Tambah Siswa
-    </a>
-    <a href="/admin/siswa/export.php" class="btn btn-success">
+        <a href="/admin/siswa/create.php" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i> Tambah Siswa
+        </a>
+        <a href="/admin/siswa/export.php" class="btn btn-success">
             <i class="bi bi-download me-1"></i> Download Excel
         </a>
         <a href="/admin/siswa/import.php" class="btn btn-outline-success">
@@ -61,8 +74,16 @@ ob_start();
             <option value="nonaktif" <?= $status === 'nonaktif' ? 'selected' : '' ?>>Nonaktif</option>
             <option value="lulus" <?= $status === 'lulus' ? 'selected' : '' ?>>Lulus</option>
         </select>
+        <select name="tahun_ajaran" class="form-select form-select-sm" style="width:140px">
+            <option value="">Semua TA</option>
+            <?php foreach ($daftarTA as $kode): ?>
+                <option value="<?= e($kode) ?>" <?= $ta === $kode ? 'selected' : '' ?>>
+                    <?= e($kode) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
         <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
-        <?php if ($q !== '' || $status !== ''): ?>
+        <?php if ($q !== '' || $status !== '' || $ta !== ''): ?>
             <a href="/admin/siswa/" class="btn btn-sm btn-outline-danger">Reset</a>
         <?php endif; ?>
     </form>
@@ -82,6 +103,7 @@ ob_start();
                     <th>Nama</th>
                     <th>JK</th>
                     <th>Tgl Lahir</th>
+                    <th>Tahun Ajaran</th>
                     <th>Nama Ortu</th>
                     <th>No. HP Ortu</th>
                     <th>Email Ortu</th>
@@ -92,28 +114,29 @@ ob_start();
             <tbody>
                 <?php if (empty($siswa)): ?>
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-4">Belum ada data siswa.</td>
+                        <td colspan="12" class="text-center text-muted py-4">Belum ada data siswa.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($siswa as $i => $s): ?>
                         <tr>
                             <td><?= $i + 1 ?></td>
                             <td>
-        <?php if (!empty($s['foto_url'])): ?>
-            <img src="/uploads/<?= e($s['foto_url']) ?>"
-                 alt=""
-                 style="width:40px;height:40px;object-fit:cover;border-radius:6px">
-        <?php else: ?>
-            <div class="bg-secondary text-white d-flex align-items-center justify-content-center rounded"
-                 style="width:40px;height:40px;font-size:14px">
-                <i class="bi bi-person"></i>
-            </div>
-        <?php endif; ?>
-    </td>
+                                <?php if (!empty($s['foto_url'])): ?>
+                                    <img src="/uploads/<?= e($s['foto_url']) ?>"
+                                         alt=""
+                                         style="width:40px;height:40px;object-fit:cover;border-radius:6px">
+                                <?php else: ?>
+                                    <div class="bg-secondary text-white d-flex align-items-center justify-content-center rounded"
+                                         style="width:40px;height:40px;font-size:14px">
+                                        <i class="bi bi-person"></i>
+                                    </div>
+                                <?php endif; ?>
+                            </td>
                             <td><?= e($s['nis'] ?: '-') ?></td>
                             <td><?= e($s['nama']) ?></td>
                             <td><?= $s['jenis_kelamin'] === 'L' ? 'L' : 'P' ?></td>
                             <td><?= $s['tanggal_lahir'] ? e(date('d/m/Y', strtotime($s['tanggal_lahir']))) : '-' ?></td>
+                            <td><?= e($s['tahun_ajaran'] ?: '-') ?></td>
                             <td><?= e($s['nama_ortu'] ?: '-') ?></td>
                             <td><?= e($s['no_hp_ortu'] ?: '-') ?></td>
                             <td><?= e($s['email_ortu'] ?: '-') ?></td>
