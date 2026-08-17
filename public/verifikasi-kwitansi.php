@@ -7,15 +7,16 @@ $kode = strtoupper(trim($_GET['kode'] ?? ''));
 global $pdo;
 
 $row = null;
-$error = '';
+$source = '';
 
 if ($kode === '' || !preg_match('/^[A-F0-9]{16}$/', $kode)) {
     $error = 'Kode verifikasi tidak valid.';
 } else {
+    // 1) Cek konfirmasi wali
     $st = $pdo->prepare(
-        'SELECT k.no_kwitansi, k.jumlah, k.tanggal_bayar, k.keterangan, k.bulan_spp,
-                k.bulan_list, k.tahun_ajaran, k.status, k.verified_at, k.kode_verifikasi,
-                s.nama AS nama_siswa, s.nis
+        'SELECT k.no_kwitansi, k.jumlah, k.tanggal_bayar AS tanggal, k.keterangan,
+                k.bulan_spp, k.bulan_list, k.tahun_ajaran, k.status, k.verified_at,
+                k.kode_verifikasi, s.nama AS nama_siswa, s.nis
          FROM konfirmasi_bayar k
          JOIN siswa s ON s.id = k.siswa_id
          WHERE k.kode_verifikasi = ? AND k.status = \'diterima\'
@@ -23,28 +24,35 @@ if ($kode === '' || !preg_match('/^[A-F0-9]{16}$/', $kode)) {
     );
     $st->execute([$kode]);
     $row = $st->fetch();
-    if (!$row) {
-        $error = 'Kwitansi tidak ditemukan atau belum diverifikasi.';
-    }
-}
-
-$bulanNama = [
-    1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
-    5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
-    9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
-];
-
-$labelBulan = '-';
-if ($row) {
-    if (!empty($row['bulan_list'])) {
-        $bl = array_map('intval', explode(',', $row['bulan_list']));
-        $names = array_map(fn($b) => $bulanNama[$b] ?? $b, $bl);
-        $labelBulan = implode(', ', $names);
-        if (!empty($row['tahun_ajaran'])) {
-            $labelBulan .= ' TA ' . $row['tahun_ajaran'];
+    if ($row) {
+        $source = 'wali';
+    } else {
+        // 2) Cek transaksi admin (cash)
+        $st2 = $pdo->prepare(
+            'SELECT t.no_kwitansi, t.jumlah, t.tanggal, t.keterangan, t.kode_verifikasi,
+                    s.nama AS nama_siswa, s.nis, t.id AS transaksi_id
+             FROM transaksi t
+             LEFT JOIN siswa s ON s.id = t.siswa_id
+             WHERE t.kode_verifikasi = ? AND t.kategori = \'spp\'
+             LIMIT 1'
+        );
+        $st2->execute([$kode]);
+        $row = $st2->fetch();
+        if ($row) {
+            $source = 'admin';
+            $row['status'] = 'diterima';
+            $row['verified_at'] = $row['tanggal'];
+            // ambil bulan dari detail
+            $d = $pdo->prepare('SELECT bulan, tahun_ajaran FROM transaksi_spp_bulan WHERE transaksi_id = ? ORDER BY bulan');
+            $d->execute([(int)$row['transaksi_id']]);
+            $bl = $d->fetchAll();
+            if ($bl) {
+                $row['bulan_list'] = implode(',', array_column($bl, 'bulan'));
+                $row['tahun_ajaran'] = $bl[0]['tahun_ajaran'];
+            }
+        } else {
+            $error = 'Kwitansi tidak ditemukan atau belum diverifikasi.';
         }
-    } elseif (!empty($row['bulan_spp'])) {
-        $labelBulan = ($bulanNama[(int)$row['bulan_spp']] ?? '') . ' ' . ($row['tahun_ajaran'] ?? '');
     }
 }
 ?>
@@ -91,7 +99,7 @@ if ($row) {
           </tr>
           <tr>
             <td class="text-muted">Tanggal Bayar</td>
-            <td><?= e($row['tanggal_bayar']) ?></td>
+            <td><?= e($row['tanggal'] ?? $row['tanggal_bayar'] ?? '-') ?></td>
           </tr>
           <tr>
             <td class="text-muted">Nama Siswa</td>

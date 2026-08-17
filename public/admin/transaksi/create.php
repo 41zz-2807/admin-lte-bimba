@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../../includes/auth.php';
 require_once __DIR__ . '/../../../includes/flash.php';
+require_once __DIR__ . '/../../../includes/helpers.php';
 
 require_login();
 
@@ -8,7 +9,9 @@ $pageTitle = 'Tambah Transaksi';
 $error = '';
 global $pdo;
 
-$siswaList = $pdo->query("SELECT id, nama FROM siswa WHERE status='aktif' ORDER BY nama")->fetchAll();
+$siswaList = $pdo->query(
+    "SELECT id, nama, email_ortu, nama_ortu FROM siswa WHERE status='aktif' ORDER BY nama"
+)->fetchAll();
 
 $bulanNama = [
     1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
@@ -16,16 +19,29 @@ $bulanNama = [
     9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
 ];
 
-// Tahun ajaran: 2 tahun ke belakang s/d 2 tahun ke depan
-// Jika bulan >= Juli → TA berjalan = Y/(Y+1), else (Y-1)/Y
-$yNow = (int) date('Y');
-$start = (date('n') >= 7) ? $yNow : $yNow - 1;
+// ---- Tahun ajaran + tarif dari tabel tahun_ajaran ----
 $tahunAjaranList = [];
-for ($i = -2; $i <= 2; $i++) {
-    $a = $start + $i;
-    $tahunAjaranList[] = $a . '/' . ($a + 1);
+$tarifMap        = [];
+$defaultTA       = '';
+
+try {
+    $rowsTA = $pdo->query(
+        'SELECT kode, tarif_spp, is_aktif FROM tahun_ajaran ORDER BY kode DESC'
+    )->fetchAll();
+    foreach ($rowsTA as $r) {
+        $tahunAjaranList[] = $r['kode'];
+        $tarifMap[$r['kode']] = (float) $r['tarif_spp'];
+        if ((int) $r['is_aktif'] === 1) {
+            $defaultTA = $r['kode'];
+        }
+    }
+} catch (PDOException $e) {
+    $tahunAjaranList = [];
 }
-$defaultTA = $start . '/' . ($start + 1);
+
+if ($defaultTA === '' && $tahunAjaranList) {
+    $defaultTA = $tahunAjaranList[0];
+}
 
 $jenis          = $_POST['jenis'] ?? 'pemasukan';
 $kategori       = trim($_POST['kategori'] ?? 'lain');
@@ -36,18 +52,87 @@ $siswa_id       = (int) ($_POST['siswa_id'] ?? 0);
 $tahun_ajaran   = trim($_POST['tahun_ajaran'] ?? $defaultTA);
 $tarif          = (float) ($_POST['tarif'] ?? 0);
 $bulan_dipilih  = array_map('intval', $_POST['bulan'] ?? []);
+$kirim_email    = isset($_POST['kirim_email_kwitansi']);
 
-// Validasi format TA
 if ($tahun_ajaran !== '' && !preg_match('/^\d{4}\/\d{4}$/', $tahun_ajaran)) {
     $tahun_ajaran = $defaultTA;
 }
 
-// Bulan sudah lunas untuk siswa + tahun ajaran
+// Default tarif dari map jika kosong
+if ($tarif <= 0 && $tahun_ajaran !== '' && isset($tarifMap[$tahun_ajaran])) {
+    $tarif = $tarifMap[$tahun_ajaran];
+}
+
+// Bulan lunas
 $lunas = [];
-if ($siswa_id > 0 && $kategori === 'spp') {
-    $st = $pdo->prepare('SELECT bulan FROM transaksi_spp_bulan WHERE siswa_id = ? AND tahun_ajaran = ?');
+if ($siswa_id > 0 && $kategori === 'spp' && $tahun_ajaran !== '') {
+    $st = $pdo->prepare(
+        'SELECT bulan FROM transaksi_spp_bulan WHERE siswa_id = ? AND tahun_ajaran = ?'
+    );
     $st->execute([$siswa_id, $tahun_ajaran]);
     $lunas = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+}
+
+function generate_kwitansi_transaksi(PDO $pdo, int $transaksiId): array
+{
+    $noKwitansi = 'KW/T/' . date('Ymd') . '/' . str_pad((string) $transaksiId, 4, '0', STR_PAD_LEFT);
+
+    do {
+        $kode = strtoupper(bin2hex(random_bytes(8)));
+        $cek  = $pdo->prepare('SELECT id FROM transaksi WHERE kode_verifikasi = ? LIMIT 1');
+        $cek->execute([$kode]);
+    } while ($cek->fetch());
+
+    try {
+        $cek2 = $pdo->prepare('SELECT id FROM konfirmasi_bayar WHERE kode_verifikasi = ? LIMIT 1');
+        $cek2->execute([$kode]);
+        while ($cek2->fetch()) {
+            $kode = strtoupper(bin2hex(random_bytes(8)));
+            $cek2->execute([$kode]);
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    $pdo->prepare(
+        'UPDATE transaksi SET no_kwitansi = ?, kode_verifikasi = ? WHERE id = ?'
+    )->execute([$noKwitansi, $kode, $transaksiId]);
+
+    return ['no_kwitansi' => $noKwitansi, 'kode_verifikasi' => $kode];
+}
+
+function kirim_email_kwitansi_spp(array $siswa, array $kw, float $total, string $ket, string $tanggal): string
+{
+    $app   = require __DIR__ . '/../../../config/app.php';
+    $email = trim((string) ($siswa['email_ortu'] ?? ''));
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return ' Email tidak dikirim (email ortu kosong/tidak valid).';
+    }
+
+    $namaOrtu  = trim((string) ($siswa['nama_ortu'] ?? '')) ?: 'Bapak/Ibu';
+    $verifyUrl = rtrim($app['url'] ?? '', '/') . '/verifikasi-kwitansi.php?kode=' . urlencode($kw['kode_verifikasi']);
+
+    $body = "Halo {$namaOrtu},\n\n"
+        . "Pembayaran SPP {$app['name']} telah dicatat.\n\n"
+        . "Nama siswa   : {$siswa['nama']}\n"
+        . "Tanggal bayar: {$tanggal}\n"
+        . "Jumlah       : Rp " . number_format($total, 0, ',', '.') . "\n"
+        . "Keterangan   : {$ket}\n"
+        . "No. Kwitansi : {$kw['no_kwitansi']}\n"
+        . "Kode verifikasi: {$kw['kode_verifikasi']}\n\n"
+        . "Cek keaslian kwitansi:\n{$verifyUrl}\n\n"
+        . "Terima kasih.\n{$app['name']}";
+
+    $result = send_smtp_mail(
+        $email,
+        'Kwitansi SPP ' . $kw['no_kwitansi'] . ' — ' . $app['name'],
+        $body,
+        $namaOrtu
+    );
+
+    return $result === true
+        ? ' Email kwitansi terkirim ke ' . $email . '.'
+        : ' Gagal kirim email: ' . $result;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
@@ -69,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             if ($siswa_id <= 0) {
                 $error = 'Pilih siswa untuk pembayaran SPP.';
             } elseif ($tarif <= 0) {
-                $error = 'Tarif SPP per bulan harus lebih dari 0.';
+                $error = 'Tarif SPP per bulan harus lebih dari 0. Atur di Pengaturan Tahun Ajaran.';
             } elseif (empty($bulan_dipilih)) {
                 $error = 'Pilih minimal satu bulan.';
             } elseif (!preg_match('/^\d{4}\/\d{4}$/', $tahun_ajaran)) {
@@ -91,9 +176,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                     try {
                         $pdo->beginTransaction();
 
-                        $ins = $pdo->prepare('INSERT INTO transaksi
-                            (jenis, kategori, siswa_id, jumlah, tanggal, keterangan, bukti, user_id)
-                            VALUES ("pemasukan", "spp", ?, ?, ?, ?, ?, ?)');
+                        $ins = $pdo->prepare(
+                            'INSERT INTO transaksi
+                             (jenis, kategori, siswa_id, jumlah, tanggal, keterangan, bukti, user_id)
+                             VALUES (\'pemasukan\', \'spp\', ?, ?, ?, ?, ?, ?)'
+                        );
                         $ins->execute([
                             $siswa_id,
                             $total,
@@ -104,22 +191,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                         ]);
                         $transaksi_id = (int) $pdo->lastInsertId();
 
-                        $det = $pdo->prepare('INSERT INTO transaksi_spp_bulan
-                            (transaksi_id, siswa_id, bulan, tahun_ajaran, jumlah)
-                            VALUES (?, ?, ?, ?, ?)');
+                        $det = $pdo->prepare(
+                            'INSERT INTO transaksi_spp_bulan
+                             (transaksi_id, siswa_id, bulan, tahun_ajaran, jumlah)
+                             VALUES (?, ?, ?, ?, ?)'
+                        );
                         foreach ($bulan_ok as $b) {
                             $det->execute([$transaksi_id, $siswa_id, $b, $tahun_ajaran, $tarif]);
                         }
 
+                        $kw = generate_kwitansi_transaksi($pdo, $transaksi_id);
+
                         $pdo->commit();
+
+                        $pesanEmail = '';
+                        if ($kirim_email) {
+                            $stSiswa = $pdo->prepare(
+                                'SELECT id, nama, email_ortu, nama_ortu FROM siswa WHERE id = ? LIMIT 1'
+                            );
+                            $stSiswa->execute([$siswa_id]);
+                            $siswaRow = $stSiswa->fetch() ?: [
+                                'nama' => '-', 'email_ortu' => '', 'nama_ortu' => '',
+                            ];
+                            $pesanEmail = kirim_email_kwitansi_spp(
+                                $siswaRow, $kw, $total, $ket, $tanggal
+                            );
+                        }
+
                         set_flash(
                             'success',
-                            'SPP berhasil dicatat: ' . count($bulan_ok) . ' bulan, total Rp ' . number_format($total, 0, ',', '.')
+                            'SPP berhasil dicatat: ' . count($bulan_ok) . ' bulan, total Rp ' .
+                            number_format($total, 0, ',', '.') .
+                            '. Kwitansi: ' . $kw['no_kwitansi'] . '.' . $pesanEmail
                         );
-                        redirect('admin/transaksi/');
+                        redirect('admin/transaksi/kwitansi.php?id=' . $transaksi_id);
                     } catch (Exception $e) {
                         $pdo->rollBack();
-                        $error = 'Gagal menyimpan SPP. Mungkin ada bulan yang sudah lunas.';
+                        $error = 'Gagal menyimpan SPP: ' . $e->getMessage();
                     }
                 }
             }
@@ -134,9 +242,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                 $kat  = $kategori !== '' ? $kategori : ($jenis === 'pemasukan' ? 'lain' : 'operasional');
                 $sid  = ($siswa_id > 0 && $jenis === 'pemasukan') ? $siswa_id : null;
 
-                $ins = $pdo->prepare('INSERT INTO transaksi
-                    (jenis, kategori, siswa_id, jumlah, tanggal, keterangan, bukti, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                $ins = $pdo->prepare(
+                    'INSERT INTO transaksi
+                     (jenis, kategori, siswa_id, jumlah, tanggal, keterangan, bukti, user_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                );
                 $ins->execute([
                     $jenis,
                     $kat,
@@ -166,6 +276,13 @@ ob_start();
             <div class="card-body">
                 <?php if ($error): ?>
                     <div class="alert alert-danger"><?= e($error) ?></div>
+                <?php endif; ?>
+
+                <?php if (!$tahunAjaranList): ?>
+                    <div class="alert alert-warning">
+                        Belum ada tahun ajaran. Isi dulu di
+                        <a href="/admin/settings.php">Pengaturan → Tahun Ajaran & Tarif SPP</a>.
+                    </div>
                 <?php endif; ?>
 
                 <form method="post" enctype="multipart/form-data" id="formTransaksi">
@@ -201,7 +318,6 @@ ob_start();
                         </select>
                     </div>
 
-                    <!-- Jumlah (non-SPP) -->
                     <div id="wrapBiasa">
                         <div class="mb-3">
                             <label class="form-label">Jumlah (Rp) <span class="text-danger">*</span></label>
@@ -210,23 +326,30 @@ ob_start();
                         </div>
                     </div>
 
-                    <!-- SPP multi-bulan -->
                     <div id="wrapSpp" style="display:none;">
                         <div class="row">
-                            <div class="col-md-4 mb-3">
+                            <div class="col-md-5 mb-3">
                                 <label class="form-label">Tahun Ajaran</label>
                                 <select name="tahun_ajaran" id="tahun_ajaran" class="form-select">
                                     <?php foreach ($tahunAjaranList as $ta): ?>
-                                        <option value="<?= e($ta) ?>" <?= $tahun_ajaran === $ta ? 'selected' : '' ?>>
+                                        <option value="<?= e($ta) ?>"
+                                                data-tarif="<?= (float) ($tarifMap[$ta] ?? 0) ?>"
+                                                <?= $tahun_ajaran === $ta ? 'selected' : '' ?>>
                                             <?= e($ta) ?>
+                                            <?php if (($tarifMap[$ta] ?? 0) > 0): ?>
+                                                — Rp <?= number_format($tarifMap[$ta], 0, ',', '.') ?>
+                                            <?php else: ?>
+                                                — (tarif belum diatur)
+                                            <?php endif; ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="col-md-8 mb-3">
+                            <div class="col-md-7 mb-3">
                                 <label class="form-label">Tarif SPP / bulan (Rp) <span class="text-danger">*</span></label>
                                 <input type="number" name="tarif" id="tarif" class="form-control" min="1" step="1"
                                        value="<?= $tarif > 0 ? (int) $tarif : '' ?>">
+                                <div class="form-text">Otomatis dari pengaturan TA; bisa diubah manual jika perlu.</div>
                             </div>
                         </div>
                         <div class="mb-3">
@@ -251,6 +374,13 @@ ob_start();
                                 <?php endforeach; ?>
                             </div>
                             <div class="form-text">Bulan yang sudah lunas (pada tahun ajaran ini) tidak bisa dipilih lagi.</div>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input type="checkbox" class="form-check-input" name="kirim_email_kwitansi"
+                                   id="kirim_email_kwitansi" value="1" checked>
+                            <label class="form-check-label" for="kirim_email_kwitansi">
+                                Kirim kwitansi ke email orang tua setelah simpan
+                            </label>
                         </div>
                     </div>
 
@@ -285,6 +415,9 @@ ob_start();
     const wrapSiswa = document.getElementById('wrapSiswa');
     const jumlah = document.getElementById('jumlah');
     const tarif = document.getElementById('tarif');
+    const taSelect = document.getElementById('tahun_ajaran');
+
+    const tarifMap = <?= json_encode($tarifMap, JSON_UNESCAPED_UNICODE) ?>;
 
     const katPemasukan = [
         { v: 'spp', t: 'SPP' },
@@ -327,9 +460,19 @@ ob_start();
         if (isSpp) {
             jumlah.removeAttribute('required');
             tarif.setAttribute('required', 'required');
+            isiTarifDariTA();
         } else {
             tarif.removeAttribute('required');
             jumlah.setAttribute('required', 'required');
+        }
+    }
+
+    function isiTarifDariTA() {
+        if (!taSelect || !tarif) return;
+        const ta = taSelect.value;
+        const t = parseFloat(tarifMap[ta] || 0);
+        if (t > 0) {
+            tarif.value = Math.round(t);
         }
     }
 
@@ -347,9 +490,13 @@ ob_start();
     jenis.addEventListener('change', isiKategori);
     kategori.addEventListener('change', toggleSpp);
     document.getElementById('siswa_id').addEventListener('change', refreshLunas);
-    document.getElementById('tahun_ajaran').addEventListener('change', function () {
-        if (document.getElementById('siswa_id').value) refreshLunas();
-    });
+
+    if (taSelect) {
+        taSelect.addEventListener('change', function () {
+            isiTarifDariTA();
+            if (document.getElementById('siswa_id').value) refreshLunas();
+        });
+    }
 
     isiKategori();
 })();
