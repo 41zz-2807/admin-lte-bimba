@@ -9,11 +9,12 @@ services:
     volumes:
       - .:/var/www/html
     environment:
-      - DB_HOST=adminlte_db          # nama container MySQL
+      - DB_HOST=adminlte_db
       - DB_PORT=3306
       - DB_NAME=bimba_ksr
-      - DB_USER=bimba                 # sesuaikan jika beda
-      - DB_PASS=merdeka1945                     # ISI password MySQL kamu
+      - DB_USER=bimba
+      - DB_PASS=merdeka1945
+      - TZ=Asia/Jakarta          # ← tambahan timezone
     networks:
       - admin-lte-web_default
     restart: unless-stopped
